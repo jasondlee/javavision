@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.steeplesoft</groupId>
+    <artifactId>javavision</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+    <properties>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+
+        <javacpp.version>1.5.5</javacpp.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacpp</artifactId>
+            <version>${javacpp.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacpp-platform</artifactId>
+            <version>${javacpp.version}</version>
+        </dependency>
+    </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>2.3</version>
+                <executions>
+                    <execution>
+                        <id>properties</id>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                    <!--
+                        puts the dependencies to the target/lib folder;
+                        we would need the javacpp-1.1.jar to build the java wrapper shared library
+                     -->
+                    <execution>
+                        <id>dependencies</id>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+                everything (including dependencies) will be wrapped in a jar;
+                also indicate the main class to be executed my default
+             -->
+            <plugin>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <descriptorRefs>
+                        <descriptorRef>jar-with-dependencies</descriptorRef>
+                    </descriptorRefs>
+                    <archive>
+                        <manifest>
+                            <mainClass>com.steeplesoft.javavision.JavaVisionLib</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+
+            <!--
+                specify where the libfoo.so is stored, after compile;
+                it is needed when the unit test is run
+             -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.22.2</version>
+                <configuration>
+                    <skipTests>false</skipTests>
+                    <forkMode>once</forkMode>
+                    <environmentVariables>
+                        <LD_LIBRARY_PATH>target/classes/eu/atspace/hash/linux-x86_64</LD_LIBRARY_PATH>
+                    </environmentVariables>
+                    <systemProperties>
+                        <property>
+                            <name>java.library.tmpdir</name>
+                            <value>target/classes/eu/atspace/hash/linux-x86_64</value>
+                        </property>
+                    </systemProperties>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>1.6.0</version>
+                <!-- this is how the shared library libfoo.so is built -->
+                <executions>
+                    <execution>
+                        <id>prepare-tvision</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>cmake</executable>
+                            <commandlineArgs>. -B ./build -DCMAKE_BUILD_TYPE=Release</commandlineArgs>
+                            <workingDirectory>src/main/library</workingDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>build-tvision</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>cmake</executable>
+                            <commandlineArgs>--build ./build</commandlineArgs>
+                            <workingDirectory>src/main/library</workingDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>clean-tvision</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>cmake</executable>
+                            <commandlineArgs>--build ./build --target clean</commandlineArgs>
+                            <workingDirectory>src/main/library</workingDirectory>
+                        </configuration>
+                    </execution>
+                    <!-- in here we build the Java-based wrapper shared library -->
+                    <execution>
+                        <id>build-library</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>java</executable>
+                            <commandlineArgs>
+                                -jar ${project.build.directory}/lib/javacpp-${javacpp.version}.jar
+                                -Xcompiler -L${basedir}/target/classes/com/steeplesoft/javavision/linux-x86_64
+                                -Xcompiler -L${basedir}/src/main/library/build
+                                -Xcompiler -I${basedir}/src/main/library/include
+                                -classpath target/classes com.steeplesoft.javavision.JavaVisionLib
+                            </commandlineArgs>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
